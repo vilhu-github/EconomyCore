@@ -134,6 +134,8 @@
                             <artifact>net.tnemc:TNIL-Paper</artifact>
                             <excludes>
                                 <exclude>net/tnemc/item/platform/conversion/PlatformConverter.class</exclude>
+                                <!-- Paper 26.3 removed MAP_COLOR; replaced by PaperCore's copy. -->
+                                <exclude>net/tnemc/item/paper/platform/impl/modern/PaperMapColorComponent.class</exclude>
                             </excludes>
                         </filter>
                         <filter>
