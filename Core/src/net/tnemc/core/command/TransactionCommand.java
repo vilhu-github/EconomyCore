@@ -30,7 +30,6 @@ import net.tnemc.core.transaction.history.SortedHistory;
 import net.tnemc.plugincore.core.compatibility.CmdSource;
 import net.tnemc.plugincore.core.io.message.MessageData;
 
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -68,13 +67,13 @@ public class TransactionCommand {
     heading.addReplacement("$page_top", String.valueOf(away.get().maxPages()));
     sender.message(heading);
 
-    for(final Map.Entry<Long, UUID> entry : away.get().getPage(page).entrySet()) {
+    for(final UUID id : away.get().getPage(page)) {
 
-      final Optional<Receipt> receipt = account.get().findReceipt(entry.getValue());
+      final Optional<Receipt> receipt = account.get().findReceipt(id);
       if(receipt.isPresent()) {
 
         final MessageData awayEntry = new MessageData("Messages.Transaction.AwayEntry");
-        awayEntry.addReplacement("$id", entry.getValue().toString());
+        awayEntry.addReplacement("$id", id.toString());
         awayEntry.addReplacement("$type", receipt.get().getType());
         sender.message(awayEntry);
       }
@@ -99,25 +98,38 @@ public class TransactionCommand {
     heading.addReplacement("$page_top", String.valueOf(sorted.maxPages()));
     sender.message(heading);
 
-    for(final Map.Entry<Long, UUID> entry : sorted.getPage(selectedPage).entrySet()) {
-      sendHistoryEntry(sender, account, entry);
+    for(final UUID id : sorted.getPage(selectedPage)) {
+      sendHistoryEntry(sender, account, id);
     }
   }
 
   private static void sendHistoryEntry(final CmdSource<?> sender, final Account account,
-                                       final Map.Entry<Long, UUID> entry) {
+                                       final UUID id) {
 
-    final Optional<Receipt> receipt = account.findReceipt(entry.getValue());
+    final Optional<Receipt> receipt = account.findReceipt(id);
     if(receipt.isEmpty()) {
       return;
     }
 
     final MessageData awayEntry = new MessageData("Messages.Transaction.HistoryEntry");
-    awayEntry.addReplacement("$id", entry.getValue().toString());
+    awayEntry.addReplacement("$id", id.toString());
     awayEntry.addReplacement("$type", receipt.get().getType());
-    awayEntry.addReplacement("$initiator", participantName(receipt.get().getFrom()));
+    awayEntry.addReplacement("$initiator", initiatorName(receipt.get()));
     awayEntry.addReplacement("$recipient", participantName(receipt.get().getTo()));
     sender.message(awayEntry);
+  }
+
+  /**
+   * The paying account, or for gives and plugin transactions without one, whoever caused it.
+   */
+  private static String initiatorName(final Receipt receipt) {
+
+    if(receipt.getFrom() != null || receipt.getSource() == null) {
+      return participantName(receipt.getFrom());
+    }
+    return TNECore.eco().account().findAccount(receipt.getSource().name())
+            .map(Account::getName)
+            .orElse(receipt.getSource().name());
   }
 
   private static String participantName(final TransactionParticipant participant) {

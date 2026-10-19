@@ -52,6 +52,14 @@ import net.tnemc.plugincore.core.io.storage.engine.sql.MySQL;
 import net.tnemc.plugincore.core.io.storage.engine.sql.PostgreSQL;
 import org.jetbrains.annotations.NotNull;
 
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -179,7 +187,68 @@ public class TNEStorageProvider implements StorageProvider {
       sql.executeUpdate(tneDialect.receiptsHoldingsTable(), new Object[]{});
       sql.executeUpdate(tneDialect.receiptsParticipantsTable(), new Object[]{});
       sql.executeUpdate(tneDialect.receiptsModifiersTable(), new Object[]{});
+
+      if(!(this.engine instanceof PostgreSQL) && !(tneDialect instanceof MySQLRevampDialect)) {
+        migrateReceiptKeys(sql, DataConfig.yaml().getString("Data.Database.Prefix"));
+      }
     }
+  }
+
+  /**
+   * Receipt tables used to be keyed on the receipt id alone, so only the first participant,
+   * modifier and holdings row of each receipt was stored. This widens those keys on existing
+   * databases; it does nothing once they are widened.
+   */
+  private void migrateReceiptKeys(final SQLConnector sql, final String prefix) {
+
+    try(final Connection connection = sql.connection();
+        final Statement statement = connection.createStatement()) {
+
+      for(final String table : List.of(prefix + "receipts_participants", prefix + "receipts_modifiers")) {
+        if(primaryKeyColumns(connection, table) == 1) {
+          statement.executeUpdate("ALTER TABLE " + table + " DROP PRIMARY KEY, ADD PRIMARY KEY(uid, participant_type)");
+          PluginCore.log().inform("Widened primary key of " + table + ".");
+        }
+      }
+
+      final String holdings = prefix + "receipts_holdings";
+      for(final String index : uidOnlyUniqueIndexes(connection, holdings)) {
+        statement.executeUpdate("ALTER TABLE " + holdings + " DROP INDEX `" + index + "`, ADD UNIQUE KEY "
+                                + "receipt_holding (uid, participant, ending, region, currency, holdings_type)");
+        PluginCore.log().inform("Widened unique key of " + holdings + ".");
+      }
+    } catch(final SQLException e) {
+      PluginCore.log().error("Failed to update receipt table keys; transaction history stays incomplete.",
+                             e, DebugLevel.OFF);
+    }
+  }
+
+  private int primaryKeyColumns(final Connection connection, final String table) throws SQLException {
+
+    int columns = 0;
+    try(final ResultSet keys = connection.getMetaData().getPrimaryKeys(connection.getCatalog(), null, table)) {
+      while(keys.next()) {
+        columns++;
+      }
+    }
+    return columns;
+  }
+
+  private List<String> uidOnlyUniqueIndexes(final Connection connection, final String table) throws SQLException {
+
+    final Map<String, List<String>> indexes = new HashMap<>();
+    try(final ResultSet info = connection.getMetaData().getIndexInfo(connection.getCatalog(), null, table, true, false)) {
+      while(info.next()) {
+        final String name = info.getString("INDEX_NAME");
+        if(name != null && !"PRIMARY".equalsIgnoreCase(name)) {
+          indexes.computeIfAbsent(name, ignored->new ArrayList<>()).add(info.getString("COLUMN_NAME"));
+        }
+      }
+    }
+    return indexes.entrySet().stream()
+            .filter(entry->entry.getValue().equals(List.of("uid")))
+            .map(Map.Entry::getKey)
+            .toList();
   }
 
   @Override

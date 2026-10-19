@@ -5,6 +5,7 @@ import net.tnemc.core.account.holdings.HoldingsEntry;
 import net.tnemc.core.account.holdings.modify.HoldingsModifier;
 import net.tnemc.core.actions.source.PluginSource;
 import net.tnemc.core.command.AdminCommand;
+import net.tnemc.core.manager.TransactionManager;
 import net.tnemc.core.transaction.Transaction;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -21,16 +22,18 @@ import java.util.concurrent.TimeUnit;
  * Storage regression probe. Stops the server it runs on; never install it on a live server.
  *
  * <p>Run 1: 16 threads deposit concurrently (lost updates), then {@code reloaddb} with unsaved
- * changes, then one last unsaved deposit right before shutdown. Run 2 (next start) checks that the
- * last deposit survived the restart. Each run logs {@code SAVE_PROBE_RESULT ... failures=N}.</p>
+ * changes, then one last unsaved deposit and a payment right before shutdown. Run 2 (next start)
+ * checks that both survived the restart and that the payment receipt was reloaded with both
+ * participants. Each run logs {@code SAVE_PROBE_RESULT ... failures=N}.</p>
  */
 public final class SaveProbe extends JavaPlugin {
 
   private static final String ID = "5a7e0000-0000-4000-8000-00000000beef";
+  private static final String OTHER = "5a7e0000-0000-4000-8000-00000000cafe";
   private static final int THREADS = 16;
   private static final int DEPOSITS = 500;
   private static final BigDecimal CONCURRENT = BigDecimal.valueOf(THREADS * DEPOSITS);
-  private static final BigDecimal FINAL = CONCURRENT.add(BigDecimal.valueOf(5));
+  private static final BigDecimal FINAL = CONCURRENT.add(BigDecimal.valueOf(5 - 2));
 
   private final List<String> failures = new ArrayList<>();
 
@@ -46,6 +49,7 @@ public final class SaveProbe extends JavaPlugin {
     try {
       if(marker.exists()) {
         check("restart", FINAL, balance());
+        checkPayReceipt();
         marker.delete();
       } else {
         firstRun(marker);
@@ -81,6 +85,7 @@ public final class SaveProbe extends JavaPlugin {
     check("reloaddb", CONCURRENT, balance());
 
     give(5);
+    pay(2);
     getDataFolder().mkdirs();
     marker.createNewFile();
   }
@@ -96,6 +101,35 @@ public final class SaveProbe extends JavaPlugin {
               .process();
     } catch(final Exception e) {
       throw new IllegalStateException(e);
+    }
+  }
+
+  private void pay(final int amount) {
+
+    final Account other = TNECore.eco().account().findAccount(OTHER)
+            .orElseGet(()->TNECore.eco().account().createAccount(OTHER, "SaveProbeOther").getAccount().orElseThrow());
+    final HoldingsModifier modifier = new HoldingsModifier(region(), currency(), BigDecimal.valueOf(amount));
+    try {
+      new Transaction("pay")
+              .to(other, modifier)
+              .from(TNECore.eco().account().findAccount(ID).orElseThrow(), modifier.counter())
+              .processor(EconomyManager.baseProcessor())
+              .source(new PluginSource("SaveProbe"))
+              .process();
+    } catch(final Exception e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  private void checkPayReceipt() {
+
+    final boolean complete = TNECore.eco().account().findAccount(OTHER).isPresent()
+                             && TransactionManager.receipts().getReceiptsByParticipant(UUID.fromString(OTHER)).stream()
+                                     .anyMatch(receipt->receipt.getType().equals("pay")
+                                                        && receipt.getFrom() != null && receipt.getTo() != null);
+    getLogger().info("pay receipt reloaded with both participants: " + complete);
+    if(!complete) {
+      failures.add("pay receipt missing a participant after restart");
     }
   }
 
