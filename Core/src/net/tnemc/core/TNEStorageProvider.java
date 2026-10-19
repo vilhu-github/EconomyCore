@@ -39,8 +39,6 @@ import net.tnemc.core.io.storage.dialect.impl.MySQLRevampDialect;
 import net.tnemc.core.transaction.Receipt;
 import net.tnemc.plugincore.PluginCore;
 import net.tnemc.plugincore.core.compatibility.log.DebugLevel;
-import net.tnemc.plugincore.core.compatibility.scheduler.ChoreExecution;
-import net.tnemc.plugincore.core.compatibility.scheduler.ChoreTime;
 import net.tnemc.plugincore.core.io.storage.Datable;
 import net.tnemc.plugincore.core.io.storage.StorageConnector;
 import net.tnemc.plugincore.core.io.storage.StorageEngine;
@@ -196,18 +194,7 @@ public class TNEStorageProvider implements StorageProvider {
   @Override
   public void storeAll() {
 
-    final Optional<Datable<?>> data = Optional.ofNullable(engine.datables().get(Account.class));
-
-    //Our account storeAll requires no identifier, so we set it to null
-    data.ifPresent(datable->PluginCore.server().scheduler()
-            .createDelayedTask(()->datable.storeAll(connector, null), new ChoreTime(0), ChoreExecution.SECONDARY));
-
-
-    final Optional<Datable<?>> receiptData = Optional.ofNullable(engine.datables().get(Receipt.class));
-
-    //Our account storeAll requires no identifier, so we set it to null
-    receiptData.ifPresent(datable->PluginCore.server().scheduler()
-            .createDelayedTask(()->datable.storeAll(connector, null), new ChoreTime(0), ChoreExecution.SECONDARY));
+    TNECore.instance().saver().saveAll();
   }
 
   @Override
@@ -217,8 +204,7 @@ public class TNEStorageProvider implements StorageProvider {
     final Optional<Datable<?>> data = Optional.ofNullable(engine.datables().get(Account.class));
 
     //Our account storeAll requires no identifier, so we set it to null
-    data.ifPresent(datable->PluginCore.server().scheduler()
-            .createDelayedTask(()->datable.delete(connector, identifier), new ChoreTime(0), ChoreExecution.SECONDARY));
+    data.ifPresent(datable->TNECore.instance().saver().run(()->datable.delete(connector, identifier)));
 
   }
 

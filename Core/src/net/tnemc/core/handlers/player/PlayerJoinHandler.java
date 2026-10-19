@@ -243,6 +243,7 @@ public class PlayerJoinHandler {
       return;
     }
 
+    TNECore.instance().saver().flush();
     TNECore.eco().account().getAccounts().clear();
     TransactionManager.receipts().getReceipts().clear();
     TNECore.instance().storage().loadAll(Account.class, "");

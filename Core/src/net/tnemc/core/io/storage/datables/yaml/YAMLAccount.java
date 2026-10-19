@@ -87,24 +87,33 @@ public class YAMLAccount implements Datable<Account> {
 
     PluginCore.log().debug("Saving Account with ID: " + identifier + " Name: " + account.getName(), DebugLevel.STANDARD);
     final String file = "accounts/" + identifier + ".yml";
+
+    //Cleared before reading, so a change made while this save runs keeps the account dirty.
+    account.clearDirty();
     waitForFile(file);
     TNECore.yaml().add(file);
-    final File accFile = new File(PluginCore.directory(), file);
-    if(!ensureAccountFile(accFile, account) ) {
-      return;
-    }
+    try {
+      final File accFile = new File(PluginCore.directory(), file);
+      if(!ensureAccountFile(accFile, account) ) {
+        account.markDirty();
+        return;
+      }
 
-    final YamlDocument yaml = loadDocument(accFile, account);
-    if(yaml == null) {
-      return;
+      final YamlDocument yaml = loadDocument(accFile, account);
+      if(yaml == null) {
+        account.markDirty();
+        return;
+      }
+      writeAccount(yaml, account);
+      if(!saveDocument(yaml, account)) {
+        account.markDirty();
+        return;
+      }
+    } finally {
+      //A failed save must release the file, or every later save of this account waits forever.
+      TNECore.yaml().remove(file);
     }
-    writeAccount(yaml, account);
-    if(!saveDocument(yaml, account)) {
-      return;
-    }
-    TNECore.yaml().remove(file);
     TNECore.instance().storage().storeAll(account.getIdentifier().toString());
-    account.clearDirty();
     PluginCore.callbacks().call(new AccountSaveCallback(account));
   }
 

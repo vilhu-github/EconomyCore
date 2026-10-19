@@ -153,7 +153,7 @@ public class AccountManager {
     PluginCore.log().debug("Adding account to Accounts Map. ID: " + identifier + " Name: " + name);
     accounts.put(account.getIdentifier().toString(), account);
     if(!skipDB) {
-      TNECore.instance().storage().store(account, account.getIdentifier().toString());
+      TNECore.instance().saver().save(account);
     }
     storeIdentifier(account);
     PluginCore.log().debug("Created Account: " + account.getIdentifier() + " Name: " + account.getName());
