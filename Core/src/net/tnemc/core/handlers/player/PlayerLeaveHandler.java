@@ -24,7 +24,6 @@ import net.tnemc.core.account.PlayerAccount;
 import net.tnemc.core.account.holdings.HoldingsEntry;
 import net.tnemc.core.currency.Currency;
 import net.tnemc.plugincore.core.compatibility.PlayerProvider;
-import net.tnemc.plugincore.core.io.storage.StorageManager;
 import net.tnemc.plugincore.core.utils.HandlerResponse;
 
 import java.util.Date;
@@ -67,7 +66,7 @@ public class PlayerLeaveHandler {
 
       ((PlayerAccount)account.get()).setLastOnline(new Date().getTime());
       account.get().clearAwayReceipts();
-      StorageManager.instance().store(account.get(), account.get().getIdentifier().toString());
+      TNECore.instance().saver().save(account.get());
     }
     return response;
   }

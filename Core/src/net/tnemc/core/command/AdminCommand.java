@@ -149,6 +149,7 @@ public class AdminCommand extends BaseCommand {
         TNECore.instance().config().load();
         TNECore.eco().currency().load(PluginCore.directory());
         TNECore.instance().data().load();
+        TNECore.instance().saver().flush();
         TNECore.instance().storage().loadAll(Account.class, "");
         TNECore.instance().message().load();
         formattedType = "all";
@@ -162,6 +163,7 @@ public class AdminCommand extends BaseCommand {
 
   public static void onReloadDB(final CmdSource<?> sender) {
 
+    TNECore.instance().saver().flush();
     TNECore.eco().account().getAccounts().clear();
     TransactionManager.receipts().getReceipts().clear();
 
@@ -183,7 +185,7 @@ public class AdminCommand extends BaseCommand {
 
   public static void onSave(final CmdSource<?> sender) {
 
-    StorageManager.instance().storeAll();
+    TNECore.instance().saver().saveAll();
     sender.message(new MessageData("Messages.Data.Save"));
   }
 

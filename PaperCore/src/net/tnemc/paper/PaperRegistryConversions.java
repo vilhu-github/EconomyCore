@@ -5,6 +5,7 @@ import net.tnemc.item.paper.platform.PaperItemPlatform;
 import net.tnemc.item.platform.conversion.PlatformConverter;
 import org.bukkit.Bukkit;
 import org.bukkit.Keyed;
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 
@@ -18,6 +19,8 @@ final class PaperRegistryConversions {
     final PlatformConverter converter = PaperItemPlatform.instance().converter();
     converter.registerConversion(Keyed.class, String.class, value -> value.getKey().toString());
     converter.registerConversion(Key.class, String.class, Key::asString);
+    // TNIL decodes pot decoration sherds through this, but never registers it.
+    converter.registerConversion(String.class, Material.class, PaperRegistryConversions::material);
     register("org.bukkit.damage.DamageType");
     register("org.bukkit.JukeboxSong");
     register("org.bukkit.MusicInstrument");
@@ -37,6 +40,15 @@ final class PaperRegistryConversions {
     final PlatformConverter converter = PaperItemPlatform.instance().converter();
     converter.registerConversion(registryType, String.class, value -> value.getKey().toString());
     converter.registerConversion(String.class, registryType, value -> resolve(registryType, value));
+  }
+
+  private static Material material(final String value) {
+
+    final Material result = Material.matchMaterial(value);
+    if(result == null) {
+      throw new IllegalArgumentException("Unknown Material: " + value);
+    }
+    return result;
   }
 
   private static <T extends Keyed> T resolve(final Class<T> registryType, final String value) {
