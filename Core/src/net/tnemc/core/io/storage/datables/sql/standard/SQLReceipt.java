@@ -22,6 +22,7 @@ import net.tnemc.core.account.holdings.HoldingsEntry;
 import net.tnemc.core.account.holdings.modify.HoldingsModifier;
 import net.tnemc.core.account.holdings.modify.HoldingsOperation;
 import net.tnemc.core.actions.ActionSource;
+import net.tnemc.core.actions.source.PluginSource;
 import net.tnemc.core.config.DataConfig;
 import net.tnemc.core.config.MainConfig;
 import net.tnemc.core.io.storage.dialect.TNEDialect;
@@ -112,8 +113,10 @@ public class SQLReceipt implements Datable<Receipt> {
         final String server = MainConfig.yaml().getString("Core.Server.Name");
         for(final Receipt receipt : receipts) {
           final String id = receipt.getId().toString();
+          //API transactions may have no source.
+          final ActionSource source = receipt.getSource() == null? new PluginSource("Unknown") : receipt.getSource();
           batch(receiptStatement, id, new java.sql.Timestamp(receipt.getTime()), receipt.getType(),
-                receipt.getSource().name(), receipt.getSource().type(), receipt.isArchive(), receipt.isVoided(),
+                source.name(), source.type(), receipt.isArchive(), receipt.isVoided(),
                 receipt.isArchive(), receipt.isVoided());
           final Statements statements = new Statements(participants, holdings, modifiers, id, server);
           batchParticipant(statements, receipt.getFrom(), receipt.getModifierFrom(), "from");
@@ -132,9 +135,14 @@ public class SQLReceipt implements Datable<Receipt> {
         connection.setAutoCommit(true);
       }
     } catch(final SQLException | RuntimeException e) {
+      if(receipts.size() > 1) {
+        //One receipt the database rejects must not keep every other receipt unsaved.
+        receipts.forEach(receipt->store(sql, tne, List.of(receipt)));
+        return;
+      }
       receipts.forEach(Receipt::markDirty);
-      PluginCore.log().error("Failed to save " + receipts.size() + " transaction receipts; retrying on the next save.",
-                             e, DebugLevel.OFF);
+      PluginCore.log().error("Failed to save transaction receipt " + receipts.get(0).getId()
+                             + "; retrying on the next save.", e, DebugLevel.OFF);
     }
   }
 

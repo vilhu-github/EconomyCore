@@ -93,6 +93,17 @@ public class SQLAccount implements Datable<Account> {
   @Override
   public void store(final StorageConnector<?> connector, @NotNull final Account account, @Nullable final String identifier) {
 
+    try {
+      storeAccount(connector, account, identifier);
+    } catch(final RuntimeException e) {
+      //The dirty flag is cleared when a save starts; restore it so the next save retries.
+      account.markDirty();
+      throw e;
+    }
+  }
+
+  private void storeAccount(final StorageConnector<?> connector, @NotNull final Account account, @Nullable final String identifier) {
+
     if(connector instanceof final SQLConnector sql && sql.dialect() instanceof final TNEDialect tne) {
 
       PluginCore.log().debug("Saving Account with ID: " + identifier + " Name: " + account.getName(), DebugLevel.STANDARD);
@@ -277,9 +288,22 @@ public class SQLAccount implements Datable<Account> {
     if(connector instanceof SQLConnector) {
       for(final Account account : TNECore.eco().account().getAccounts().values()) {
         if(account.isDirty()) {
-          store(connector, account, account.getIdentifier().toString());
+          storeIsolated(connector, account);
         }
       }
+    }
+  }
+
+  /**
+   * One account failing to save must not stop the rest of the save pass.
+   */
+  private void storeIsolated(final StorageConnector<?> connector, final Account account) {
+
+    try {
+      store(connector, account, account.getIdentifier().toString());
+    } catch(final RuntimeException e) {
+      PluginCore.log().error("Failed to save account " + account.getIdentifier() + "; retrying on the next save.",
+                             e, DebugLevel.OFF);
     }
   }
 

@@ -149,8 +149,10 @@ public class AdminCommand extends BaseCommand {
         TNECore.instance().config().load();
         TNECore.eco().currency().load(PluginCore.directory());
         TNECore.instance().data().load();
-        TNECore.instance().saver().flush();
-        TNECore.instance().storage().loadAll(Account.class, "");
+        if(!TNECore.instance().saver().reload(()->TNECore.instance().storage().loadAll(Account.class, ""))) {
+          sender.message(new MessageData("<red>Reload cancelled: unsaved balance changes could not be saved. See the console."));
+          return;
+        }
         TNECore.instance().message().load();
         formattedType = "all";
       }
@@ -163,12 +165,16 @@ public class AdminCommand extends BaseCommand {
 
   public static void onReloadDB(final CmdSource<?> sender) {
 
-    TNECore.instance().saver().flush();
-    TNECore.eco().account().getAccounts().clear();
-    TransactionManager.receipts().getReceipts().clear();
+    final boolean reloaded = TNECore.instance().saver().reload(()->{
+      TNECore.eco().account().getAccounts().clear();
+      TransactionManager.receipts().getReceipts().clear();
 
-    TNECore.instance().storage().loadAll(Account.class, "");
-    TNECore.instance().storage().loadAll(Receipt.class, "");
+      TNECore.instance().storage().loadAll(Account.class, "");
+      TNECore.instance().storage().loadAll(Receipt.class, "");
+    });
+    if(!reloaded && sender != null) {
+      sender.message(new MessageData("<red>Reload cancelled: unsaved balance changes could not be saved. See the console."));
+    }
   }
 
   public static void onReset(final CmdSource<?> sender) {

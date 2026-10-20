@@ -11,6 +11,7 @@ package net.tnemc.core.io.storage;
 import net.tnemc.core.TNECore;
 import net.tnemc.core.account.Account;
 import net.tnemc.core.transaction.Receipt;
+import net.tnemc.core.transaction.Transaction;
 import net.tnemc.plugincore.PluginCore;
 import net.tnemc.plugincore.core.compatibility.log.DebugLevel;
 import net.tnemc.plugincore.core.io.storage.Datable;
@@ -37,14 +38,17 @@ import java.util.concurrent.TimeoutException;
 public final class SaveService {
 
   private static final long FLUSH_TIMEOUT_SECONDS = 120;
+  //Below Paper's 60 second watchdog: reloads wait on the server thread.
+  private static final long RELOAD_TIMEOUT_SECONDS = 20;
+
+  private volatile Thread storageThread;
 
   private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(runnable->{
     final Thread thread = new Thread(runnable, "TNE-Storage");
     thread.setDaemon(true);
+    storageThread = thread;
     return thread;
   });
-
-  private volatile Thread storageThread;
 
   /**
    * Starts saving modified data periodically. Each run starts only after the previous one ended.
@@ -91,28 +95,61 @@ public final class SaveService {
   }
 
   /**
-   * Waits until all queued work has finished and every modified account and receipt is saved. Call
-   * this before anything replaces in-memory accounts with database data.
+   * Saves all unsaved changes, then replaces in-memory data with database data. No balance change
+   * can happen in between, and nothing is replaced unless every account was saved.
+   *
+   * @param reload Replaces in-memory data, e.g. by reloading accounts from the database.
+   *
+   * @return false if saving failed and the reload was cancelled.
    */
-  public void flush() {
+  public boolean reload(final Runnable reload) {
+
+    synchronized(Transaction.BALANCE_LOCK) {
+      if(!flush(RELOAD_TIMEOUT_SECONDS)) {
+        PluginCore.log().error("Reload cancelled: unsaved balance changes could not be saved.", DebugLevel.OFF);
+        return false;
+      }
+      reload.run();
+      return true;
+    }
+  }
+
+  /**
+   * Waits until all queued work has finished and every modified account and receipt was saved.
+   *
+   * @return true if no account is left with unsaved changes.
+   */
+  private boolean flush(final long timeoutSeconds) {
 
     if(Thread.currentThread() == storageThread) {
       saveDirty();
-      return;
+      return accountsSaved();
     }
 
     try {
-      executor.submit(guard(this::saveDirty)).get(FLUSH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+      executor.submit(this::saveDirty).get(timeoutSeconds, TimeUnit.SECONDS);
     } catch(final RejectedExecutionException shutDown) {
       guard(this::saveDirty).run();
     } catch(final TimeoutException e) {
-      PluginCore.log().error("TNE storage did not finish saving within " + FLUSH_TIMEOUT_SECONDS
-                             + " seconds; unsaved balance changes may be lost.", DebugLevel.OFF);
+      PluginCore.log().error("TNE storage did not finish saving within " + timeoutSeconds + " seconds.", DebugLevel.OFF);
+      return false;
     } catch(final InterruptedException e) {
       Thread.currentThread().interrupt();
+      return false;
     } catch(final ExecutionException e) {
       PluginCore.log().error("TNE storage flush failed.", e, DebugLevel.OFF);
+      return false;
     }
+    return accountsSaved();
+  }
+
+  /**
+   * Failed saves keep their account dirty. Receipts are left out on purpose: they only hold
+   * history, and one receipt the database rejects must not block every reload.
+   */
+  private static boolean accountsSaved() {
+
+    return TNECore.eco().account().getAccounts().values().stream().noneMatch(Account::isDirty);
   }
 
   /**
@@ -120,7 +157,10 @@ public final class SaveService {
    */
   public void shutdown() {
 
-    flush();
+    if(!flush(FLUSH_TIMEOUT_SECONDS)) {
+      PluginCore.log().error("TNE could not save every account before shutdown; unsaved balance changes are lost.",
+                             DebugLevel.OFF);
+    }
     executor.shutdown();
     try {
       executor.awaitTermination(FLUSH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -164,7 +204,6 @@ public final class SaveService {
   private Runnable guard(final Runnable task) {
 
     return ()->{
-      storageThread = Thread.currentThread();
       try {
         task.run();
       } catch(final Throwable e) {

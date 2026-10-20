@@ -51,7 +51,7 @@ public class Transaction {
   private TransactionParticipant from;
   private TransactionParticipant to;
   //ponytail: one global lock serialises balance changes; per-account locks if contention ever shows.
-  private static final Object BALANCE_LOCK = new Object();
+  public static final Object BALANCE_LOCK = new Object();
 
   private HoldingsModifier modifierTo;
   private HoldingsModifier modifierFrom;

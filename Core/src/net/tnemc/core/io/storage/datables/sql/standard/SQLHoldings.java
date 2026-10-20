@@ -145,13 +145,14 @@ public class SQLHoldings implements Datable<HoldingsEntry> {
         statement.executeBatch();
         connection.commit();
         return true;
-      } catch(final SQLException e) {
+      } catch(final SQLException | RuntimeException e) {
+        //Runtime failures too, e.g. reading the inventory of a player who just logged out.
         connection.rollback();
         throw e;
       } finally {
         connection.setAutoCommit(true);
       }
-    } catch(final SQLException e) {
+    } catch(final SQLException | RuntimeException e) {
       PluginCore.log().error("Failed to save holdings for account " + identifier + "; retrying on the next save.",
                              e, DebugLevel.OFF);
       return false;

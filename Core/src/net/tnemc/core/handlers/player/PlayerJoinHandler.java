@@ -68,6 +68,9 @@ public class PlayerJoinHandler {
       return response;
     }
 
+    //Before the joining account is restored: a reload afterwards would first save its stale balance.
+    reloadSharedDataIfNeeded();
+
     validatePlayerName(provider);
     final Optional<Account> account = TNECore.eco().account().findAccount(provider.identifier());
     PluginCore.log().debug("Join Account Check: " + account.isPresent());
@@ -130,7 +133,6 @@ public class PlayerJoinHandler {
     TNECore.eco().account().getLoading().remove(identifier);
     scheduleAwayNotification(provider, account);
     notifyUpdate(provider);
-    reloadSharedDataIfNeeded();
   }
 
   private void updatePlayerName(final PlayerProvider provider, final Account account) {
@@ -243,12 +245,13 @@ public class PlayerJoinHandler {
       return;
     }
 
-    TNECore.instance().saver().flush();
-    TNECore.eco().account().getAccounts().clear();
-    TransactionManager.receipts().getReceipts().clear();
-    TNECore.instance().storage().loadAll(Account.class, "");
-    TNECore.instance().storage().loadAll(Receipt.class, "");
-    TNECore.eco().setReloadTime(new Date().getTime());
+    TNECore.instance().saver().reload(()->{
+      TNECore.eco().account().getAccounts().clear();
+      TransactionManager.receipts().getReceipts().clear();
+      TNECore.instance().storage().loadAll(Account.class, "");
+      TNECore.instance().storage().loadAll(Receipt.class, "");
+      TNECore.eco().setReloadTime(new Date().getTime());
+    });
   }
 
   private record JoinAccount(Optional<Account> account, boolean firstJoin) { }
