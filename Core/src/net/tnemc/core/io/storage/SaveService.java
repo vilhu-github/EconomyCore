@@ -29,11 +29,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * Runs every TNE write on one dedicated thread.
+ * Runs every TNE write of this server on one dedicated thread.
  *
- * <p>A single writer means saves never overlap, never race each other for the same account, and
- * never pile up as new Bukkit scheduler threads. Reloads and shutdown {@link #flush() flush} through
- * the same thread so no queued or unsaved change is overwritten or dropped.</p>
+ * <p>Within this server, saves never overlap, never race each other for the same account, and never
+ * pile up as new Bukkit scheduler threads. {@link #reload(Runnable) Reloads} and shutdown save through
+ * the same thread first, so no queued or unsaved change is overwritten or dropped.</p>
+ *
+ * <p>This does not coordinate servers. Each server keeps its own copy of every balance and writes it
+ * back, so two servers sharing a database overwrite each other's changes unless they use different
+ * {@code Core.Server.Name} values or Redis sync.</p>
  */
 public final class SaveService {
 
