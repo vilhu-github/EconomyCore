@@ -52,6 +52,7 @@ import net.tnemc.core.currency.Currency;
 import net.tnemc.core.currency.calculations.ItemCalculations;
 import net.tnemc.core.currency.item.ItemDenomination;
 import net.tnemc.core.currency.parser.ParseMoney;
+import net.tnemc.core.channel.RedisSync;
 import net.tnemc.core.io.storage.SaveService;
 import net.tnemc.core.io.yaml.YamlStorageManager;
 import net.tnemc.core.manager.Updater;
@@ -247,8 +248,12 @@ public abstract class TNECore extends PluginEngine {
       this.syncEnabledAtStartup = false;
     }
 
+    //TNE runs Redis itself; plugin core's subscriber cannot reconnect and only listens to one channel.
+    if(pool != null) {
+      RedisSync.start(pool);
+    }
     this.storage = new StorageManager(DataConfig.yaml().getString("Data.Database.Type"),
-                                      new TNEStorageProvider(), settings, pool);
+                                      new TNEStorageProvider(), settings, null);
   }
 
   private boolean redisAuthRuntimePresent() {
@@ -525,6 +530,8 @@ public abstract class TNECore extends PluginEngine {
 
   @Override
   public void postDisable() {
+
+    RedisSync.stop();
 
     if(storage == null) {
       return;
