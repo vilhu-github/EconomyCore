@@ -159,15 +159,15 @@ public class YAMLHoldings implements Datable<HoldingsEntry> {
     TNECore.yaml().add(file);
     try {
       final File accFile = new File(PluginCore.directory(), file);
-      if(!ensureFile(accFile, identifier)) {
-        return;
-      }
-      final YamlDocument yaml = loadDocument(accFile, identifier);
+      final YamlDocument yaml = ensureFile(accFile, identifier)? loadDocument(accFile, identifier) : null;
       if(yaml == null) {
+        account.get().markDirty();
         return;
       }
       writeHoldings(yaml, account.get());
-      saveDocument(yaml, identifier);
+      if(!saveDocument(yaml, identifier)) {
+        account.get().markDirty();
+      }
     } finally {
       TNECore.yaml().remove(file);
     }
@@ -219,12 +219,14 @@ public class YAMLHoldings implements Datable<HoldingsEntry> {
     }
   }
 
-  private void saveDocument(final YamlDocument yaml, final String identifier) {
+  private boolean saveDocument(final YamlDocument yaml, final String identifier) {
 
     try {
       yaml.save();
+      return true;
     } catch(final IOException ignore) {
       PluginCore.log().error("Issue saving account holdings to file. Account: " + identifier, DebugLevel.OFF);
+      return false;
     }
   }
 
