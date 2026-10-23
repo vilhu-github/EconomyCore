@@ -11,13 +11,15 @@ import org.bukkit.Registry;
 
 final class PaperRegistryConversions {
 
+  private static final String UNREGISTERED = "tne:unregistered";
+
   private PaperRegistryConversions() {
   }
 
   static void register() {
 
     final PlatformConverter converter = PaperItemPlatform.instance().converter();
-    converter.registerConversion(Keyed.class, String.class, value -> value.getKey().toString());
+    converter.registerConversion(Keyed.class, String.class, PaperRegistryConversions::key);
     converter.registerConversion(Key.class, String.class, Key::asString);
     // TNIL decodes pot decoration sherds through this, but never registers it.
     converter.registerConversion(String.class, Material.class, PaperRegistryConversions::material);
@@ -38,8 +40,21 @@ final class PaperRegistryConversions {
   private static <T extends Keyed> void register(final Class<T> registryType) {
 
     final PlatformConverter converter = PaperItemPlatform.instance().converter();
-    converter.registerConversion(registryType, String.class, value -> value.getKey().toString());
+    converter.registerConversion(registryType, String.class, PaperRegistryConversions::key);
     converter.registerConversion(String.class, registryType, value -> resolve(registryType, value));
+  }
+
+  /**
+   * Item components can define values such as goat horn instruments inline on the item. Those are
+   * not in a registry and have no key; the component keeps the native value for restoring them.
+   */
+  private static String key(final Keyed value) {
+
+    try {
+      return value.getKey().toString();
+    } catch(final IllegalStateException unregistered) {
+      return UNREGISTERED;
+    }
   }
 
   private static Material material(final String value) {
